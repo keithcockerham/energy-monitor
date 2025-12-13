@@ -40,20 +40,6 @@ End-to-end machine learning on real-time energy data from a residential electric
 
 ### 1.3 Interactive Visualization Dashboard
 
-** Stack:** Plotly
-
-```
-Dashboard Layout:
-
-[Date Range Selector]  [Phase Filter]  [Resolution: 1s/1m/1h] 
-[REAL-TIME POWER CONSUMPTION]
-[Interactive line chart with event markers]
-
-[EVENT LOG]  
-[Table with detected events]
-[Interactive line chart with event markers]
-
-```
 ---
 
 ## Phase 2: Event Detection (Unsupervised)
@@ -68,20 +54,11 @@ Dashboard Layout:
 
 ### 2.2 Event Characterization Features
 
-For each detected event, extract a "signature":
-
----
-
 ## Phase 3: Device Recognition (Supervised Learning)
 
 ### 3.1 Training Data Collection Strategy
 
 **Manual Labeling Interface:**
-
-**Labeling Strategy:**
-1. Start with high-power, distinctive devices (HVAC, EV Charger, oven)
-2. Label 20-50 events per device class for initial training
-3. Use active learning to prioritize uncertain predictions
 
 ### 3.2 Model Architectures
 
@@ -93,8 +70,6 @@ For each detected event, extract a "signature":
 
 ### 3.3 Handling Class Imbalance
 
-Some devices trigger rarely (water heater) vs constantly (refrigerator):
-
 #### Option 1: SMOTE oversampling
 
 #### Option 2: Class weights
@@ -105,8 +80,6 @@ Some devices trigger rarely (water heater) vs constantly (refrigerator):
 
 ## Phase 4: New Device Detection (Novelty Detection)
 
-Detect when an unknown device appears in your home.
-
 ### 4.1 Approach: One-Class Classification
 
 ### 4.2 Clustering Unknown Events
@@ -114,8 +87,6 @@ Detect when an unknown device appears in your home.
 ---
 
 ## Phase 5: Anomaly Detection for Device Health
-
-Check for device distress
 
 ### 5.1 Per-Device Baseline Modeling
 

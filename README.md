@@ -91,5 +91,3 @@ End-to-end machine learning on real-time energy data from a residential electric
 ### 5.1 Per-Device Baseline Modeling
 
 ### 5.2 Device-Specific Health Indicators
-
-## Tech Stack Recommendations

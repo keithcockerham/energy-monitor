@@ -7,9 +7,9 @@
 
 ## Executive Summary
 
-This project demonstrates end-to-end machine learning on real-time energy data from a residential electrical panel. The system captures split-phase electrical measurements at 1-second intervals, enabling device recognition, anomaly detection, and energy attribution without sub-metering individual circuits.
+End-to-end machine learning on real-time energy data from a residential electrical panel. The system captures split-phase electrical measurements at 1-second intervals, enabling device recognition, anomaly detection, and energy attribution without sub-metering individual circuits.
 
-**Your Data Profile:**
+**Data Profile:**
 - **Sampling Rate:** 1 Hz (1-second intervals)
 - **Electrical System:** Split-phase 120V (US residential standard)
 - **Measurements per phase:** Voltage, Current, Active Power, Apparent Power, Power Factor, Frequency
@@ -29,7 +29,7 @@ This project demonstrates end-to-end machine learning on real-time energy data f
 
 ### 1.2 Feature Engineering
 
-**Raw Features (from your data):**
+**Raw Features:**
 | Feature | Description | Used For |
 |---------|-------------|----------|
 | `a_act_power`, `b_act_power` | Real power per phase | Primary consumption metric |
@@ -40,7 +40,7 @@ This project demonstrates end-to-end machine learning on real-time energy data f
 
 ### 1.3 Interactive Visualization Dashboard
 
-**Recommended Stack:** Plotly Dash or Streamlit
+** Stack:** Plotly
 
 ```
 Dashboard Layout:

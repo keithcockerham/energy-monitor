@@ -198,6 +198,213 @@ def process_parquet_file(blob_service: BlobServiceClient, blob_name: str) -> Non
     logging.info(f"Wrote events to events/{output_path}")
 
 
+# =============================================================================
+# API Endpoints for Labeling Interface
+# =============================================================================
+@app.function_name(name="list_events")
+@app.route(route="events", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def list_events(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    List all detected events.
+    Optional query params: date (YYYY-MM-DD), unlabeled_only (true/false)
+    """
+    import os
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        return func.HttpResponse(
+            json.dumps({"error": "Storage not configured"}),
+            status_code=500,
+            mimetype="application/json"
+        )
+    
+    date_filter = req.params.get('date')
+    unlabeled_only = req.params.get('unlabeled_only', 'false').lower() == 'true'
+    
+    try:
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        events_container = blob_service.get_container_client("events")
+        
+        all_events = []
+        
+        for blob in events_container.list_blobs():
+            # Filter by date if specified
+            if date_filter:
+                # Blob name: shelly_em_01/2025/12/14/08.json
+                parts = blob.name.split('/')
+                blob_date = f"{parts[1]}-{parts[2]}-{parts[3]}"
+                if blob_date != date_filter:
+                    continue
+            
+            # Download and parse
+            blob_client = events_container.get_blob_client(blob.name)
+            content = json.loads(blob_client.download_blob().readall())
+            
+            for event in content.get("events", []):
+                event["source_file"] = blob.name
+                event["metadata"] = content.get("metadata", {})
+                
+                if unlabeled_only and event.get("label") is not None:
+                    continue
+                    
+                all_events.append(event)
+        
+        # Sort by timestamp descending
+        all_events.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        return func.HttpResponse(
+            json.dumps({
+                "count": len(all_events),
+                "events": all_events
+            }, indent=2),
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error listing events: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@app.function_name(name="update_event_label")
+@app.route(route="events/label", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def update_event_label(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Update label for a specific event.
+    Body: { "source_file": "...", "timestamp": "...", "label": "HVAC" }
+    """
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            "",
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type"
+            }
+        )
+    
+    import os
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        return func.HttpResponse(
+            json.dumps({"error": "Storage not configured"}),
+            status_code=500,
+            mimetype="application/json"
+        )
+    
+    try:
+        body = req.get_json()
+        source_file = body.get("source_file")
+        timestamp = body.get("timestamp")
+        label = body.get("label")
+        
+        if not all([source_file, timestamp]):
+            return func.HttpResponse(
+                json.dumps({"error": "source_file and timestamp required"}),
+                status_code=400,
+                mimetype="application/json"
+            )
+        
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        events_container = blob_service.get_container_client("events")
+        blob_client = events_container.get_blob_client(source_file)
+        
+        # Download, update, re-upload
+        content = json.loads(blob_client.download_blob().readall())
+        
+        updated = False
+        for event in content.get("events", []):
+            if event["timestamp"] == timestamp:
+                event["label"] = label
+                updated = True
+                break
+        
+        if not updated:
+            return func.HttpResponse(
+                json.dumps({"error": "Event not found"}),
+                status_code=404,
+                mimetype="application/json"
+            )
+        
+        blob_client.upload_blob(json.dumps(content, indent=2, default=str), overwrite=True)
+        
+        return func.HttpResponse(
+            json.dumps({"status": "success", "label": label}),
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error updating label: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@app.function_name(name="get_label_stats")
+@app.route(route="events/stats", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def get_label_stats(req: func.HttpRequest) -> func.HttpResponse:
+    """Get summary statistics of labeled events."""
+    import os
+    from collections import Counter
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        return func.HttpResponse(
+            json.dumps({"error": "Storage not configured"}),
+            status_code=500,
+            mimetype="application/json"
+        )
+    
+    try:
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        events_container = blob_service.get_container_client("events")
+        
+        label_counts = Counter()
+        total_events = 0
+        unlabeled = 0
+        
+        for blob in events_container.list_blobs():
+            blob_client = events_container.get_blob_client(blob.name)
+            content = json.loads(blob_client.download_blob().readall())
+            
+            for event in content.get("events", []):
+                total_events += 1
+                label = event.get("label")
+                if label:
+                    label_counts[label] += 1
+                else:
+                    unlabeled += 1
+        
+        return func.HttpResponse(
+            json.dumps({
+                "total_events": total_events,
+                "unlabeled": unlabeled,
+                "labeled": total_events - unlabeled,
+                "labels": dict(label_counts)
+            }, indent=2),
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error getting stats: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
 def detect_power_changes(df: pd.DataFrame, 
                          threshold_watts: float = 200.0,
                          min_duration_seconds: int = 5) -> list[dict]:

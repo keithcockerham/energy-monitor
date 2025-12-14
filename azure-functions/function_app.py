@@ -156,7 +156,13 @@ def process_new_files(timer: func.TimerRequest) -> None:
 
 def process_parquet_file(blob_service: BlobServiceClient, blob_name: str) -> None:
     """Process a single parquet file and write events."""
+    import os
+    
     logging.info(f"Processing: {blob_name}")
+    
+    # Get threshold from environment or use default
+    threshold = float(os.environ.get("EVENT_THRESHOLD_WATTS", 200.0))
+    min_duration = int(os.environ.get("EVENT_MIN_DURATION_SECONDS", 5))
     
     # Download parquet
     raw_container = blob_service.get_container_client("raw-data")
@@ -168,8 +174,8 @@ def process_parquet_file(blob_service: BlobServiceClient, blob_name: str) -> Non
     logging.info(f"Loaded {len(df)} rows from {blob_name}")
     
     # Detect events
-    events = detect_power_changes(df)
-    logging.info(f"Detected {len(events)} events")
+    events = detect_power_changes(df, threshold, min_duration)
+    logging.info(f"Detected {len(events)} events (threshold={threshold}W)")
     
     # Build output path: shelly_em_01/2025/12/14/10.parquet -> shelly_em_01/2025/12/14/10.json
     output_path = blob_name.replace('.parquet', '.json')
@@ -182,7 +188,9 @@ def process_parquet_file(blob_service: BlobServiceClient, blob_name: str) -> Non
         "hour": path_parts[4].replace('.parquet', ''),
         "processed_at": datetime.utcnow().isoformat() + "Z",
         "source_rows": len(df),
-        "events_detected": len(events)
+        "events_detected": len(events),
+        "threshold_watts": threshold,
+        "min_duration_seconds": min_duration
     }
     
     output = {
@@ -590,3 +598,170 @@ def detect_power_changes(df: pd.DataFrame,
         last_event_time = current_time
     
     return events
+
+
+# =============================================================================
+# Reprocess Endpoint - Rerun event detection with custom threshold
+# =============================================================================
+@app.function_name(name="reprocess_events")
+@app.route(route="reprocess", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.FUNCTION)
+def reprocess_events(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Reprocess raw data files with a new threshold.
+    Body: { 
+        "threshold_watts": 100,
+        "min_duration_seconds": 5,
+        "date": "2025-12-14" (optional, omit to reprocess all),
+        "preserve_labels": true (optional, default true)
+    }
+    """
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            "",
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type"
+            }
+        )
+    
+    import os
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        return func.HttpResponse(
+            json.dumps({"error": "Storage not configured"}),
+            status_code=500,
+            mimetype="application/json"
+        )
+    
+    try:
+        body = req.get_json()
+        threshold = float(body.get("threshold_watts", 200.0))
+        min_duration = int(body.get("min_duration_seconds", 5))
+        date_filter = body.get("date")  # Optional: "2025-12-14"
+        preserve_labels = body.get("preserve_labels", True)
+        
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        raw_container = blob_service.get_container_client("raw-data")
+        events_container = blob_service.get_container_client("events")
+        
+        # Get existing labels if preserving
+        existing_labels = {}
+        if preserve_labels:
+            for blob in events_container.list_blobs():
+                blob_client = events_container.get_blob_client(blob.name)
+                content = json.loads(blob_client.download_blob().readall())
+                for event in content.get("events", []):
+                    if event.get("label"):
+                        # Key by timestamp for matching
+                        existing_labels[event["timestamp"]] = event["label"]
+        
+        # Find parquet files to process
+        parquet_blobs = []
+        for blob in raw_container.list_blobs():
+            if not blob.name.endswith('.parquet'):
+                continue
+            if date_filter:
+                # Filter by date: shelly_em_01/2025/12/14/10.parquet
+                parts = blob.name.split('/')
+                blob_date = f"{parts[1]}-{parts[2]}-{parts[3]}"
+                if blob_date != date_filter:
+                    continue
+            parquet_blobs.append(blob.name)
+        
+        processed_count = 0
+        total_events = 0
+        
+        for blob_name in sorted(parquet_blobs):
+            # Download parquet
+            blob_client = raw_container.get_blob_client(blob_name)
+            parquet_bytes = blob_client.download_blob().readall()
+            df = pd.read_parquet(BytesIO(parquet_bytes))
+            
+            # Detect events with new threshold
+            events = detect_power_changes(df, threshold, min_duration)
+            
+            # Restore any existing labels
+            if preserve_labels:
+                for event in events:
+                    if event["timestamp"] in existing_labels:
+                        event["label"] = existing_labels[event["timestamp"]]
+            
+            # Build output
+            output_path = blob_name.replace('.parquet', '.json')
+            path_parts = blob_name.split('/')
+            metadata = {
+                "device_id": path_parts[0],
+                "date": f"{path_parts[1]}-{path_parts[2]}-{path_parts[3]}",
+                "hour": path_parts[4].replace('.parquet', ''),
+                "processed_at": datetime.utcnow().isoformat() + "Z",
+                "source_rows": len(df),
+                "events_detected": len(events),
+                "threshold_watts": threshold,
+                "min_duration_seconds": min_duration
+            }
+            
+            output = {
+                "metadata": metadata,
+                "events": events
+            }
+            
+            # Write to events container
+            events_blob = events_container.get_blob_client(output_path)
+            events_blob.upload_blob(json.dumps(output, indent=2, default=str), overwrite=True)
+            
+            processed_count += 1
+            total_events += len(events)
+        
+        return func.HttpResponse(
+            json.dumps({
+                "status": "success",
+                "files_processed": processed_count,
+                "total_events_detected": total_events,
+                "threshold_watts": threshold,
+                "min_duration_seconds": min_duration,
+                "labels_preserved": len(existing_labels) if preserve_labels else 0
+            }, indent=2),
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error reprocessing: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@app.function_name(name="get_processing_config")
+@app.route(route="config", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def get_processing_config(req: func.HttpRequest) -> func.HttpResponse:
+    """Get current processing configuration and available options."""
+    import os
+    
+    # Default threshold from env or fallback
+    default_threshold = float(os.environ.get("EVENT_THRESHOLD_WATTS", 200.0))
+    
+    return func.HttpResponse(
+        json.dumps({
+            "current_threshold_watts": default_threshold,
+            "recommended_thresholds": {
+                "high_power_only": 500,
+                "standard": 200,
+                "medium_devices": 100,
+                "detailed": 50
+            },
+            "notes": {
+                "high_power_only": "HVAC, EV charger, oven, dryer",
+                "standard": "Most major appliances",
+                "medium_devices": "Includes smaller kitchen appliances",
+                "detailed": "Many events, harder to classify, may include noise"
+            }
+        }, indent=2),
+        mimetype="application/json",
+        headers={"Access-Control-Allow-Origin": "*"}
+    )

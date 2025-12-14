@@ -195,3 +195,31 @@ def detect_power_changes(df: pd.DataFrame,
         last_event_time = current_time
     
     return events
+@app.function_name(name="health_check")
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def health_check(req: func.HttpRequest) -> func.HttpResponse:
+    """Diagnostic endpoint to check imports."""
+    results = {}
+    
+    try:
+        import pandas
+        results["pandas"] = f"OK - {pandas.__version__}"
+    except Exception as e:
+        results["pandas"] = f"FAIL - {e}"
+    
+    try:
+        import pyarrow
+        results["pyarrow"] = f"OK - {pyarrow.__version__}"
+    except Exception as e:
+        results["pyarrow"] = f"FAIL - {e}"
+    
+    try:
+        import numpy
+        results["numpy"] = f"OK - {numpy.__version__}"
+    except Exception as e:
+        results["numpy"] = f"FAIL - {e}"
+        
+    return func.HttpResponse(
+        json.dumps(results, indent=2),
+        mimetype="application/json"
+    )

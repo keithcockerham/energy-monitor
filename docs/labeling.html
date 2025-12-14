@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Labeling | NILM Portfolio Project</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Labeling-specific styles */
+        .labeling-controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-group label {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background: white;
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .events-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .event-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--border-color);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .event-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.12);
+        }
+
+        .event-card.labeled {
+            border-left-color: var(--success-color);
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .event-time {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .event-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 0.5rem;
+        }
+
+        .event-type.device_on {
+            background: rgba(56, 239, 125, 0.15);
+            color: #22a355;
+        }
+
+        .event-type.device_off {
+            background: rgba(245, 87, 108, 0.15);
+            color: #d63650;
+        }
+
+        .power-change {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .power-change.positive {
+            color: var(--success-color);
+        }
+
+        .power-change.negative {
+            color: var(--warning-color);
+        }
+
+        .event-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-group h4 {
+            color: var(--text-light);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-group p {
+            color: var(--text-dark);
+            font-size: 0.95rem;
+        }
+
+        .signature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .signature-grid span {
+            color: var(--text-dark);
+        }
+
+        .label-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+            flex-wrap: wrap;
+        }
+
+        .label-section > label {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .label-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .label-btn {
+            background: var(--light);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            color: var(--text-light);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .label-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .label-btn.active {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            border-color: transparent;
+            color: white;
+        }
+
+        .custom-label-input {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            align-items: center;
+        }
+
+        .custom-label-input input {
+            padding: 0.4rem 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            width: 150px;
+        }
+
+        .custom-label-input input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .custom-label-input .btn {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.8rem;
+        }
+
+        .current-label {
+            background: var(--success-color);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-light);
+        }
+
+        .loading-state::after {
+            content: "";
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--primary-color);
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-light);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--success-color);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 500;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            background: var(--warning-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>Energy Disaggregation</h1>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html">Overview</a></li>
+                <li><a href="methodology.html">Methodology</a></li>
+                <li><a href="results.html">Results</a></li>
+                <li><a href="labeling.html" class="active">Labeling</a></li>
+                <li><a href="devices.html">Devices</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h2>Event Labeling</h2>
+                <p class="subtitle">Label detected power events to train device classification models</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="metrics">
+        <div class="container">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-value" id="stat-total">--</div>
+                    <div class="metric-label">Total Events</div>
+                    <div class="metric-desc">Detected power changes</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-value" id="stat-labeled">--</div>
+                    <div class="metric-label">Labeled</div>
+                    <div class="metric-desc">Training samples ready</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">🏷️</div>
+                    <div class="metric-value" id="stat-unlabeled">--</div>
+                    <div class="metric-label">Unlabeled</div>
+                    <div class="metric-desc">Awaiting classification</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-value" id="stat-progress">--%</div>
+                    <div class="metric-label">Progress</div>
+                    <div class="metric-desc">Labeling completion</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Labeling Interface -->
+    <section class="results-preview">
+        <div class="container">
+            <h2>Power Events</h2>
+            
+            <div class="labeling-controls">
+                <div class="filter-group">
+                    <label for="date-filter">Date:</label>
+                    <input type="date" id="date-filter">
+                </div>
+                <div class="filter-group">
+                    <label for="label-filter">Show:</label>
+                    <select id="label-filter">
+                        <option value="all">All Events</option>
+                        <option value="unlabeled">Unlabeled Only</option>
+                        <option value="labeled">Labeled Only</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="loadEvents()">Refresh</button>
+            </div>
+
+            <div class="events-list" id="events-list">
+                <div class="loading-state">Loading events...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Label Reference -->
+    <section class="overview">
+        <div class="container">
+            <h2>Labeling Tips</h2>
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <h3>⚡ High Power (>1000W)</h3>
+                    <p>Tesla Charger, Oven, Dryer, Water Heater, HVAC systems</p>
+                </div>
+                <div class="overview-card">
+                    <h3>🔌 Medium Power (200-1000W)</h3>
+                    <p>Microwave, Dishwasher, Vacuum, Hair Dryer, Pool Pump</p>
+                </div>
+                <div class="overview-card">
+                    <h3>🏷️ Custom Labels</h3>
+                    <p>Use the text input to create new labels. Custom labels are remembered and will appear as buttons for future events.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>Built by Keith | <a href="https://github.com/keithcockerham">GitHub</a> | <a href="https://linkedin.com/in/kcockerham">LinkedIn</a></p>
+            <p>Energy Disaggregation Project | NILM</p>
+        </div>
+    </footer>
+
+    <div class="toast" id="toast">Label saved!</div>
+
+    <script>
+        // Azure Functions API base URL
+        const API_BASE = 'https://nilm-functions-e7c9bnc9e3hxbac7.centralus-01.azurewebsites.net/api';
+
+        // Default device labels - will be extended with custom labels from API
+        const DEFAULT_LABELS = [
+            'HVAC Upstairs',
+            'HVAC Downstairs',
+            'Tesla Charger',
+            'Oven',
+            'Dryer',
+            'Water Heater',
+            'Refrigerator',
+            'Microwave',
+            'Dishwasher',
+            'Pool Pump',
+            'Unknown',
+            'Noise'
+        ];
+        
+        // Will be populated with custom labels from stats
+        let ALL_LABELS = [...DEFAULT_LABELS];
+
+        // Timezone for display
+        const TIMEZONE = 'America/Chicago';
+
+        // Load labeling statistics and merge custom labels
+        async function loadStats() {
+            try {
+                const resp = await fetch(`${API_BASE}/events/stats`);
+                const data = await resp.json();
+                
+                document.getElementById('stat-total').textContent = data.total_events;
+                document.getElementById('stat-labeled').textContent = data.labeled;
+                document.getElementById('stat-unlabeled').textContent = data.unlabeled;
+                
+                const progress = data.total_events > 0 
+                    ? Math.round((data.labeled / data.total_events) * 100) 
+                    : 0;
+                document.getElementById('stat-progress').textContent = `${progress}%`;
+                
+                // Merge any new labels from the API that aren't in defaults
+                if (data.labels) {
+                    const existingLabels = new Set(ALL_LABELS.map(l => l.toLowerCase()));
+                    for (const label of Object.keys(data.labels)) {
+                        if (!existingLabels.has(label.toLowerCase())) {
+                            // Insert before "Unknown" and "Noise"
+                            const insertIndex = ALL_LABELS.length - 2;
+                            ALL_LABELS.splice(insertIndex, 0, label);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        // Load events from Azure
+        async function loadEvents() {
+            const list = document.getElementById('events-list');
+            list.innerHTML = '<div class="loading-state">Loading events...</div>';
+
+            const dateFilter = document.getElementById('date-filter').value;
+            const labelFilter = document.getElementById('label-filter').value;
+
+            let url = `${API_BASE}/events?`;
+            if (dateFilter) url += `date=${dateFilter}&`;
+            if (labelFilter === 'unlabeled') url += 'unlabeled_only=true&';
+
+            try {
+                const resp = await fetch(url);
+                const data = await resp.json();
+
+                let events = data.events || [];
+                
+                // Client-side filter for "labeled only"
+                if (labelFilter === 'labeled') {
+                    events = events.filter(e => e.label);
+                }
+
+                if (events.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No events found for the selected filters</div>';
+                    return;
+                }
+
+                list.innerHTML = events.map(event => renderEvent(event)).join('');
+                loadStats();
+            } catch (e) {
+                console.error('Failed to load events:', e);
+                list.innerHTML = '<div class="empty-state">Failed to load events. Check console for details.</div>';
+            }
+        }
+
+        // Render a single event card
+        function renderEvent(event) {
+            const localTime = new Date(event.timestamp).toLocaleString('en-US', {
+                timeZone: TIMEZONE,
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
+            const powerChange = event.power_change_watts;
+            const isPositive = powerChange > 0;
+            const sig = event.signature;
+
+            return `
+                <div class="event-card ${event.label ? 'labeled' : ''}" data-source="${event.source_file}" data-timestamp="${event.timestamp}">
+                    <div class="event-header">
+                        <div>
+                            <span class="event-time">${localTime}</span>
+                            <span class="event-type ${event.event_type}">${event.event_type.replace('_', ' ')}</span>
+                            ${event.label ? `<span class="current-label">${event.label}</span>` : ''}
+                        </div>
+                        <div class="power-change ${isPositive ? 'positive' : 'negative'}">
+                            ${isPositive ? '+' : ''}${powerChange.toFixed(0)}W
+                        </div>
+                    </div>
+                    
+                    <div class="event-details">
+                        <div class="detail-group">
+                            <h4>Power Levels</h4>
+                            <p>Before: ${event.power_before_watts.toFixed(0)}W</p>
+                            <p>After: ${event.power_after_watts.toFixed(0)}W</p>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Phase A</h4>
+                            <div class="signature-grid">
+                                <span>${sig.a_voltage}V</span>
+                                <span>${sig.a_current}A</span>
+                                <span>${sig.a_power}W</span>
+                                <span>PF: ${sig.a_pf}</span>
+                            </div>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Phase B</h4>
+                            <div class="signature-grid">
+                                <span>${sig.b_voltage}V</span>
+                                <span>${sig.b_current}A</span>
+                                <span>${sig.b_power}W</span>
+                                <span>PF: ${sig.b_pf}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="label-section">
+                        <label>Assign Label:</label>
+                        <div class="label-buttons">
+                            ${ALL_LABELS.map(label => `
+                                <button class="label-btn ${event.label === label ? 'active' : ''}" 
+                                        onclick="setLabel(this, '${event.source_file}', '${event.timestamp}', '${label}')">
+                                    ${label}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <div class="custom-label-input">
+                            <input type="text" 
+                                   placeholder="Custom label..." 
+                                   onkeypress="handleCustomLabel(event, this, '${event.source_file}', '${event.timestamp}')"
+                            >
+                            <button class="btn btn-primary" 
+                                    onclick="applyCustomLabel(this, '${event.source_file}', '${event.timestamp}')">
+                                Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Handle Enter key in custom label input
+        function handleCustomLabel(event, input, sourceFile, timestamp) {
+            if (event.key === 'Enter') {
+                applyCustomLabel(input, sourceFile, timestamp);
+            }
+        }
+
+        // Apply a custom label
+        async function applyCustomLabel(element, sourceFile, timestamp) {
+            const card = element.closest('.event-card');
+            const input = card.querySelector('.custom-label-input input');
+            const label = input.value.trim();
+            
+            if (!label) {
+                showToast('Please enter a label', true);
+                return;
+            }
+            
+            // Add to ALL_LABELS if new
+            if (!ALL_LABELS.includes(label)) {
+                const insertIndex = ALL_LABELS.length - 2; // Before Unknown/Noise
+                ALL_LABELS.splice(insertIndex, 0, label);
+            }
+            
+            // Use existing setLabel function
+            await setLabelDirect(sourceFile, timestamp, label, card);
+            input.value = '';
+        }
+
+        // Update event label via API (shared logic)
+        async function setLabelDirect(sourceFile, timestamp, label, card) {
+            try {
+                const resp = await fetch(`${API_BASE}/events/label`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_file: sourceFile,
+                        timestamp: timestamp,
+                        label: label
+                    })
+                });
+
+                if (resp.ok) {
+                    // Update UI
+                    card.classList.add('labeled');
+                    
+                    // Update button states
+                    card.querySelectorAll('.label-btn').forEach(b => b.classList.remove('active'));
+                    
+                    // Find and activate matching button, or reload to show new button
+                    const matchingBtn = Array.from(card.querySelectorAll('.label-btn'))
+                        .find(b => b.textContent.trim() === label);
+                    if (matchingBtn) {
+                        matchingBtn.classList.add('active');
+                    }
+
+                    // Update/add current label badge
+                    let badge = card.querySelector('.current-label');
+                    if (badge) {
+                        badge.textContent = label;
+                    } else {
+                        const typeSpan = card.querySelector('.event-type');
+                        typeSpan.insertAdjacentHTML('afterend', `<span class="current-label">${label}</span>`);
+                    }
+
+                    showToast('Label saved!');
+                    loadStats();
+                } else {
+                    showToast('Failed to save label', true);
+                }
+            } catch (e) {
+                console.error('Failed to save label:', e);
+                showToast('Failed to save label', true);
+            }
+        }
+
+        // Update event label via API (called from button click)
+        async function setLabel(btn, sourceFile, timestamp, label) {
+            const card = btn.closest('.event-card');
+            await setLabelDirect(sourceFile, timestamp, label, card);
+        }
+
+        // Show toast notification
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.toggle('error', isError);
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        // Set default date to today
+        document.getElementById('date-filter').value = new Date().toISOString().split('T')[0];
+
+        // Initial load - get stats first to populate custom labels
+        (async function init() {
+            await loadStats();  // Get custom labels first
+            await loadEvents(); // Then render events with all labels
+        })();
+    </script>
+</body>
+</html>

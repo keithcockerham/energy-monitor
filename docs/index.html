@@ -18,6 +18,7 @@
                 <li><a href="index.html" class="active">Overview</a></li>
                 <li><a href="methodology.html">Methodology</a></li>
                 <li><a href="results.html">Results</a></li>
+                <li><a href="labeling.html">Labeling</a></li>
                 <li><a href="devices.html">Devices</a></li>
             </ul>
         </div>
@@ -28,7 +29,7 @@
         <div class="container">
             <div class="hero-content">
                 <h2>Non-Intrusive Load Monitoring</h2>
-                <p class="subtitle">Just Started!  More to come!</p>
+                <p class="subtitle">Just Started! More to come!</p>
                 <p class="subtitle">Machine learning for device recognition and energy attribution from whole-home electrical data</p>
                 <div class="hero-badges">
                     <span class="badge badge-primary">Time-Series ML</span>
@@ -70,6 +71,27 @@
             </div>
         </div>
     </section>
+
+    <!-- Data Source Info -->
+    <section class="overview">
+        <div class="container">
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <h3>🔴 Live Data</h3>
+                    <p>Dashboard pulls real-time data from Azure Functions API, connected to Raspberry Pi collecting 1-second power measurements.</p>
+                </div>
+                <div class="overview-card">
+                    <h3>☁️ Azure Backend</h3>
+                    <p>Serverless processing pipeline: Blob Storage for parquet files, Timer triggers for event detection, REST API for dashboard.</p>
+                </div>
+                <div class="overview-card">
+                    <h3>🏷️ Event Labeling</h3>
+                    <p>Visit the <a href="labeling.html">Labeling page</a> to classify detected power events and build training data for ML models.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- System Architecture Diagram -->
     <section class="results-preview">
         <div class="container">
@@ -83,11 +105,12 @@
             </div>
         </div>
     </section>
+
     <section class="results-preview">
         <div class="container">
             <h2>Wiring Diagram</h2>
             <h2>!!DISCLAIMER!!</h2>
-            <h2>I am not recommending you do this.  Call an electrician!</h2>
+            <h2>I am not recommending you do this. Call an electrician!</h2>
             <div style="text-align: center;">
                 <img 
                     src="wiring.png" 
@@ -97,6 +120,7 @@
             </div>
         </div>
     </section>
+
     <!-- Power Consumption Chart -->
     <section class="results-preview">
         <div class="container">
@@ -180,7 +204,16 @@
                         <span class="skill-tag">Parquet</span>
                         <span class="skill-tag">Pandas</span>
                         <span class="skill-tag">NumPy</span>
-                        <span class="skill-tag">TimescaleDB</span>
+                        <span class="skill-tag">Azure Blob</span>
+                    </div>
+                </div>
+                <div class="skill-category">
+                    <h3>Cloud Infrastructure</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag">Azure Functions</span>
+                        <span class="skill-tag">Raspberry Pi</span>
+                        <span class="skill-tag">REST API</span>
+                        <span class="skill-tag">GitHub Actions</span>
                     </div>
                 </div>
                 <div class="skill-category">
@@ -196,8 +229,8 @@
                     <h3>Visualization</h3>
                     <div class="skill-tags">
                         <span class="skill-tag">Plotly</span>
+                        <span class="skill-tag">GitHub Pages</span>
                         <span class="skill-tag">Jupyter</span>
-                        <span class="skill-tag">Streamlit</span>
                     </div>
                 </div>
             </div>

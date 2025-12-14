@@ -65,7 +65,7 @@ def ingest_data(req: func.HttpRequest, outputblob: func.Out[str]) -> func.HttpRe
 @app.blob_trigger(
     arg_name="inputblob",
     path="raw-data/{name}",
-    connection="AzureWebJobsStorage"
+    connection="NilmStorageConnection"
 )
 @app.blob_output(
     arg_name="outputblob",

@@ -64,7 +64,7 @@ def ingest_data(req: func.HttpRequest, outputblob: func.Out[str]) -> func.HttpRe
 @app.function_name(name="detect_events")
 @app.blob_trigger(
     arg_name="inputblob",
-    path="raw-data/{device_id}/{year}/{month}/{day}/{hour}.parquet",
+    path="raw-data/{name}",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
@@ -72,47 +72,10 @@ def ingest_data(req: func.HttpRequest, outputblob: func.Out[str]) -> func.HttpRe
     path="events/{device_id}/{year}/{month}/{day}/{hour}.json",
     connection="AzureWebJobsStorage"
 )
-def detect_events(inputblob: func.InputStream, outputblob: func.Out[str]):
-    """
-    Triggered when new parquet file arrives.
-    Detects power change events and writes them to events container.
-    """
-    blob_name = inputblob.name
-    logging.info(f"Processing blob: {blob_name}")
-    
-    try:
-        # Read parquet from blob
-        parquet_bytes = inputblob.read()
-        df = pd.read_parquet(BytesIO(parquet_bytes))
-        logging.info(f"Loaded {len(df)} rows from {blob_name}")
-        
-        # Run change point detection
-        events = detect_power_changes(df)
-        logging.info(f"Detected {len(events)} events")
-        
-        # Extract metadata from blob path
-        # Path: raw-data/shelly_em_01/2025/12/14/10.parquet
-        path_parts = blob_name.split('/')
-        metadata = {
-            "device_id": path_parts[1],
-            "date": f"{path_parts[2]}-{path_parts[3]}-{path_parts[4]}",
-            "hour": path_parts[5].replace('.parquet', ''),
-            "processed_at": datetime.utcnow().isoformat() + "Z",
-            "source_rows": len(df),
-            "events_detected": len(events)
-        }
-        
-        output = {
-            "metadata": metadata,
-            "events": events
-        }
-        
-        outputblob.set(json.dumps(output, indent=2, default=str))
-        logging.info(f"Wrote {len(events)} events to events container")
-        
-    except Exception as e:
-        logging.error(f"Error processing {blob_name}: {e}")
-        raise
+def detect_events(inputblob: func.InputStream):
+    """Test blob trigger."""
+    logging.info(f"TRIGGERED! Blob name: {inputblob.name}, Size: {inputblob.length}")
+    return
 
 
 def detect_power_changes(df: pd.DataFrame, 

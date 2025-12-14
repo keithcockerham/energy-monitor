@@ -405,6 +405,128 @@ def get_label_stats(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+# =============================================================================
+# Dashboard Data Endpoint
+# =============================================================================
+@app.function_name(name="get_dashboard_data")
+@app.route(route="dashboard", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def get_dashboard_data(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Get dashboard data including timeseries and metrics.
+    Query params: 
+        hours (int): Number of hours to fetch, default 6
+        downsample (int): Take every Nth sample, default 10
+    """
+    import os
+    from datetime import timedelta
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        return func.HttpResponse(
+            json.dumps({"error": "Storage not configured"}),
+            status_code=500,
+            mimetype="application/json"
+        )
+    
+    hours = int(req.params.get('hours', 6))
+    downsample = int(req.params.get('downsample', 10))
+    
+    try:
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        raw_container = blob_service.get_container_client("raw-data")
+        events_container = blob_service.get_container_client("events")
+        
+        # Get list of parquet files, sorted by name (chronological)
+        parquet_blobs = sorted([
+            blob.name for blob in raw_container.list_blobs() 
+            if blob.name.endswith('.parquet')
+        ], reverse=True)[:hours]  # Most recent N hours
+        
+        # Load and combine data
+        dfs = []
+        for blob_name in reversed(parquet_blobs):  # Chronological order
+            blob_client = raw_container.get_blob_client(blob_name)
+            parquet_bytes = blob_client.download_blob().readall()
+            df = pd.read_parquet(BytesIO(parquet_bytes))
+            dfs.append(df)
+        
+        if not dfs:
+            return func.HttpResponse(
+                json.dumps({"error": "No data available"}),
+                status_code=404,
+                mimetype="application/json"
+            )
+        
+        combined = pd.concat(dfs, ignore_index=True)
+        combined = combined.sort_values('timestamp_utc').reset_index(drop=True)
+        
+        # Downsample for performance
+        sampled = combined.iloc[::downsample]
+        
+        # Calculate metrics
+        metrics = {
+            "sampleCount": len(combined),
+            "avgPower": float(combined['total_act_power'].mean()),
+            "avgPowerA": float(combined['a_act_power'].mean()),
+            "avgPowerB": float(combined['b_act_power'].mean()),
+            "avgPF": float((combined['a_pf'].mean() + combined['b_pf'].mean()) / 2),
+            "maxPower": float(combined['total_act_power'].max()),
+            "minPower": float(combined['total_act_power'].min())
+        }
+        
+        # Build timeseries (convert timestamps to ISO strings)
+        timeseries = {
+            "timestamps": sampled['timestamp_utc'].dt.strftime('%Y-%m-%dT%H:%M:%S').tolist(),
+            "total_power": sampled['total_act_power'].round(1).tolist(),
+            "a_power": sampled['a_act_power'].round(1).tolist(),
+            "b_power": sampled['b_act_power'].round(1).tolist(),
+            "a_pf": sampled['a_pf'].round(3).tolist(),
+            "b_pf": sampled['b_pf'].round(3).tolist()
+        }
+        
+        # Get events for the time range
+        events = []
+        for blob in events_container.list_blobs():
+            blob_client = events_container.get_blob_client(blob.name)
+            content = json.loads(blob_client.download_blob().readall())
+            
+            for event in content.get("events", []):
+                # Determine phase based on which had larger change
+                sig = event.get("signature", {})
+                phase = "A" if abs(sig.get("a_power", 0)) > abs(sig.get("b_power", 0)) else "B"
+                
+                events.append({
+                    "time": event["timestamp"].replace("+00:00", ""),
+                    "type": "ON" if event["event_type"] == "device_on" else "OFF",
+                    "delta": event["power_change_watts"],
+                    "phase": phase,
+                    "device": event.get("label") or "Unknown",
+                    "labeled": event.get("label") is not None
+                })
+        
+        # Sort events by time and limit to recent
+        events.sort(key=lambda x: x["time"], reverse=True)
+        metrics["eventCount"] = len(events)
+        
+        return func.HttpResponse(
+            json.dumps({
+                "metrics": metrics,
+                "timeseries": timeseries,
+                "events": events[:50]  # Limit to 50 most recent
+            }),
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error getting dashboard data: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
 def detect_power_changes(df: pd.DataFrame, 
                          threshold_watts: float = 200.0,
                          min_duration_seconds: int = 5) -> list[dict]:

@@ -2,3 +2,4 @@ azure-functions
 pandas
 pyarrow
 numpy
+azure-storage-blob

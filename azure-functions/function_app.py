@@ -6,6 +6,7 @@ from io import BytesIO
 
 import pandas as pd
 import numpy as np
+from azure.storage.blob import BlobServiceClient
 
 app = func.FunctionApp()
 
@@ -59,105 +60,8 @@ def ingest_data(req: func.HttpRequest, outputblob: func.Out[str]) -> func.HttpRe
 
 
 # =============================================================================
-# Blob Trigger - Change Point Detection
+# Health Check
 # =============================================================================
-@app.function_name(name="detect_events")
-@app.blob_trigger(
-    arg_name="inputblob",
-    path="raw-data/{name}",
-    connection="NilmStorageConnection"
-)
-@app.blob_output(
-    arg_name="outputblob",
-    path="events/{device_id}/{year}/{month}/{day}/{hour}.json",
-    connection="AzureWebJobsStorage"
-)
-def detect_events(inputblob: func.InputStream):
-    """Test blob trigger."""
-    logging.info(f"TRIGGERED! Blob name: {inputblob.name}, Size: {inputblob.length}")
-    return
-
-
-def detect_power_changes(df: pd.DataFrame, 
-                         threshold_watts: float = 200.0,
-                         min_duration_seconds: int = 5) -> list[dict]:
-    """
-    Detect significant power changes using a simple threshold-based approach.
-    
-    Args:
-        df: DataFrame with timestamp_utc and total_act_power columns
-        threshold_watts: Minimum power change to consider an event
-        min_duration_seconds: Minimum time between events (debounce)
-    
-    Returns:
-        List of detected events with timestamps and characteristics
-    """
-    events = []
-    
-    if len(df) < 2:
-        return events
-    
-    # Ensure sorted by time
-    df = df.sort_values('timestamp_utc').reset_index(drop=True)
-    
-    # Calculate rolling statistics for smoothing
-    df['power_smooth'] = df['total_act_power'].rolling(window=5, center=True).mean()
-    df['power_smooth'] = df['power_smooth'].fillna(df['total_act_power'])
-    
-    # Calculate power differences
-    df['power_diff'] = df['power_smooth'].diff()
-    
-    # Find significant changes
-    significant_changes = df[abs(df['power_diff']) >= threshold_watts].copy()
-    
-    last_event_time = None
-    
-    for idx, row in significant_changes.iterrows():
-        current_time = row['timestamp_utc']
-        
-        # Debounce - skip if too close to last event
-        if last_event_time is not None:
-            time_diff = (current_time - last_event_time).total_seconds()
-            if time_diff < min_duration_seconds:
-                continue
-        
-        # Determine event type
-        power_change = row['power_diff']
-        event_type = "device_on" if power_change > 0 else "device_off"
-        
-        # Get before/after power levels
-        if idx > 0:
-            power_before = df.loc[idx - 1, 'power_smooth']
-        else:
-            power_before = row['power_smooth']
-        power_after = row['power_smooth']
-        
-        # Capture electrical signature at event time
-        event = {
-            "timestamp": current_time.isoformat(),
-            "event_type": event_type,
-            "power_change_watts": round(float(power_change), 1),
-            "power_before_watts": round(float(power_before), 1),
-            "power_after_watts": round(float(power_after), 1),
-            "signature": {
-                "a_voltage": round(float(row['a_voltage']), 2),
-                "a_current": round(float(row['a_current']), 3),
-                "a_power": round(float(row['a_act_power']), 1),
-                "a_pf": round(float(row['a_pf']), 3),
-                "b_voltage": round(float(row['b_voltage']), 2),
-                "b_current": round(float(row['b_current']), 3),
-                "b_power": round(float(row['b_act_power']), 1),
-                "b_pf": round(float(row['b_pf']), 3),
-                "frequency": round(float(row['a_freq']), 2)
-            },
-            "label": None,  # To be filled by labeling interface
-            "confidence": None  # To be filled by ML model
-        }
-        
-        events.append(event)
-        last_event_time = current_time
-    
-    return events
 @app.function_name(name="health_check")
 @app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
@@ -181,8 +85,179 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
         results["numpy"] = f"OK - {numpy.__version__}"
     except Exception as e:
         results["numpy"] = f"FAIL - {e}"
+    
+    try:
+        from azure.storage.blob import BlobServiceClient
+        results["azure_storage"] = "OK"
+    except Exception as e:
+        results["azure_storage"] = f"FAIL - {e}"
         
     return func.HttpResponse(
         json.dumps(results, indent=2),
         mimetype="application/json"
     )
+
+
+# =============================================================================
+# Timer Trigger - Poll for new parquet files every 10 minutes
+# =============================================================================
+@app.function_name(name="process_new_files")
+@app.timer_trigger(
+    schedule="0 */10 * * * *",
+    arg_name="timer",
+    run_on_startup=False
+)
+def process_new_files(timer: func.TimerRequest) -> None:
+    """
+    Poll for new parquet files and process them.
+    Runs every 10 minutes.
+    """
+    import os
+    
+    logging.info("Timer trigger fired - checking for new files")
+    
+    connection_string = os.environ.get("NilmStorageConnection")
+    if not connection_string:
+        logging.error("NilmStorageConnection not set")
+        return
+    
+    try:
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        raw_container = blob_service.get_container_client("raw-data")
+        events_container = blob_service.get_container_client("events")
+        
+        # List all parquet files in raw-data
+        raw_blobs = set()
+        for blob in raw_container.list_blobs():
+            if blob.name.endswith('.parquet'):
+                raw_blobs.add(blob.name)
+        
+        # List all processed files in events
+        processed_blobs = set()
+        for blob in events_container.list_blobs():
+            # Convert events path back to raw path
+            # events/shelly_em_01/2025/12/14/10.json -> shelly_em_01/2025/12/14/10.parquet
+            raw_equiv = blob.name.replace('.json', '.parquet')
+            processed_blobs.add(raw_equiv)
+        
+        # Find unprocessed files
+        unprocessed = raw_blobs - processed_blobs
+        logging.info(f"Found {len(unprocessed)} unprocessed files")
+        
+        for blob_name in sorted(unprocessed):
+            try:
+                process_parquet_file(blob_service, blob_name)
+            except Exception as e:
+                logging.error(f"Failed to process {blob_name}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Timer trigger error: {e}")
+
+
+def process_parquet_file(blob_service: BlobServiceClient, blob_name: str) -> None:
+    """Process a single parquet file and write events."""
+    logging.info(f"Processing: {blob_name}")
+    
+    # Download parquet
+    raw_container = blob_service.get_container_client("raw-data")
+    blob_client = raw_container.get_blob_client(blob_name)
+    parquet_bytes = blob_client.download_blob().readall()
+    
+    # Read into DataFrame
+    df = pd.read_parquet(BytesIO(parquet_bytes))
+    logging.info(f"Loaded {len(df)} rows from {blob_name}")
+    
+    # Detect events
+    events = detect_power_changes(df)
+    logging.info(f"Detected {len(events)} events")
+    
+    # Build output path: shelly_em_01/2025/12/14/10.parquet -> shelly_em_01/2025/12/14/10.json
+    output_path = blob_name.replace('.parquet', '.json')
+    
+    # Extract metadata from path
+    path_parts = blob_name.split('/')
+    metadata = {
+        "device_id": path_parts[0],
+        "date": f"{path_parts[1]}-{path_parts[2]}-{path_parts[3]}",
+        "hour": path_parts[4].replace('.parquet', ''),
+        "processed_at": datetime.utcnow().isoformat() + "Z",
+        "source_rows": len(df),
+        "events_detected": len(events)
+    }
+    
+    output = {
+        "metadata": metadata,
+        "events": events
+    }
+    
+    # Write to events container
+    events_container = blob_service.get_container_client("events")
+    events_blob = events_container.get_blob_client(output_path)
+    events_blob.upload_blob(json.dumps(output, indent=2, default=str), overwrite=True)
+    
+    logging.info(f"Wrote events to events/{output_path}")
+
+
+def detect_power_changes(df: pd.DataFrame, 
+                         threshold_watts: float = 200.0,
+                         min_duration_seconds: int = 5) -> list[dict]:
+    """
+    Detect significant power changes using a simple threshold-based approach.
+    """
+    events = []
+    
+    if len(df) < 2:
+        return events
+    
+    df = df.sort_values('timestamp_utc').reset_index(drop=True)
+    
+    df['power_smooth'] = df['total_act_power'].rolling(window=5, center=True).mean()
+    df['power_smooth'] = df['power_smooth'].fillna(df['total_act_power'])
+    df['power_diff'] = df['power_smooth'].diff()
+    
+    significant_changes = df[abs(df['power_diff']) >= threshold_watts].copy()
+    
+    last_event_time = None
+    
+    for idx, row in significant_changes.iterrows():
+        current_time = row['timestamp_utc']
+        
+        if last_event_time is not None:
+            time_diff = (current_time - last_event_time).total_seconds()
+            if time_diff < min_duration_seconds:
+                continue
+        
+        power_change = row['power_diff']
+        event_type = "device_on" if power_change > 0 else "device_off"
+        
+        if idx > 0:
+            power_before = df.loc[idx - 1, 'power_smooth']
+        else:
+            power_before = row['power_smooth']
+        power_after = row['power_smooth']
+        
+        event = {
+            "timestamp": current_time.isoformat(),
+            "event_type": event_type,
+            "power_change_watts": round(float(power_change), 1),
+            "power_before_watts": round(float(power_before), 1),
+            "power_after_watts": round(float(power_after), 1),
+            "signature": {
+                "a_voltage": round(float(row['a_voltage']), 2),
+                "a_current": round(float(row['a_current']), 3),
+                "a_power": round(float(row['a_act_power']), 1),
+                "a_pf": round(float(row['a_pf']), 3),
+                "b_voltage": round(float(row['b_voltage']), 2),
+                "b_current": round(float(row['b_current']), 3),
+                "b_power": round(float(row['b_act_power']), 1),
+                "b_pf": round(float(row['b_pf']), 3),
+                "frequency": round(float(row['a_freq']), 2)
+            },
+            "label": None,
+            "confidence": None
+        }
+        
+        events.append(event)
+        last_event_time = current_time
+    
+    return events

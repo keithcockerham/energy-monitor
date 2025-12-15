@@ -539,44 +539,75 @@ def detect_power_changes(df: pd.DataFrame,
                          threshold_watts: float = 200.0,
                          min_duration_seconds: int = 5) -> list[dict]:
     """
-    Detect significant power changes using a simple threshold-based approach.
+    Detect significant power changes using steady-state comparison.
+    
+    Instead of point-to-point diffs, compares average power in windows
+    before and after each point. This catches gradual ramps (like Tesla
+    soft-start) as single events with correct magnitude.
     """
     events = []
     
-    if len(df) < 2:
+    if len(df) < 20:  # Need enough data for windows
         return events
     
     df = df.sort_values('timestamp_utc').reset_index(drop=True)
     
-    df['power_smooth'] = df['total_act_power'].rolling(window=5, center=True).mean()
-    df['power_smooth'] = df['power_smooth'].fillna(df['total_act_power'])
-    df['power_diff'] = df['power_smooth'].diff()
+    # Window sizes (in samples, ~1 sample/second)
+    window_size = 10  # 10 seconds for steady-state average
+    gap = 3  # Skip 3 samples around the change point to avoid transition noise
     
-    significant_changes = df[abs(df['power_diff']) >= threshold_watts].copy()
+    # Calculate rolling averages for "before" and "after" windows
+    # before_avg[i] = mean of samples [i-window_size-gap : i-gap]
+    # after_avg[i] = mean of samples [i+gap : i+gap+window_size]
     
+    power = df['total_act_power'].values
+    n = len(power)
+    
+    # Pre-calculate steady-state levels
+    before_avg = np.full(n, np.nan)
+    after_avg = np.full(n, np.nan)
+    
+    for i in range(window_size + gap, n - window_size - gap):
+        before_avg[i] = np.mean(power[i - window_size - gap : i - gap])
+        after_avg[i] = np.mean(power[i + gap : i + gap + window_size])
+    
+    # Calculate steady-state change at each point
+    df['power_before_steady'] = before_avg
+    df['power_after_steady'] = after_avg
+    df['steady_state_change'] = after_avg - before_avg
+    
+    # Find points where steady-state change exceeds threshold
+    significant = df[abs(df['steady_state_change']) >= threshold_watts].copy()
+    
+    if len(significant) == 0:
+        return events
+    
+    # Group nearby detections into single events
+    # (a device turning on might trigger multiple consecutive points)
     last_event_time = None
+    last_event_sign = None
     
-    for idx, row in significant_changes.iterrows():
+    for idx, row in significant.iterrows():
         current_time = row['timestamp_utc']
+        change = row['steady_state_change']
+        current_sign = 1 if change > 0 else -1
         
+        # Skip if too close to last event of same sign (debounce)
         if last_event_time is not None:
             time_diff = (current_time - last_event_time).total_seconds()
-            if time_diff < min_duration_seconds:
+            if time_diff < min_duration_seconds and current_sign == last_event_sign:
                 continue
         
-        power_change = row['power_diff']
-        event_type = "device_on" if power_change > 0 else "device_off"
+        # Determine event type
+        event_type = "device_on" if change > 0 else "device_off"
         
-        if idx > 0:
-            power_before = df.loc[idx - 1, 'power_smooth']
-        else:
-            power_before = row['power_smooth']
-        power_after = row['power_smooth']
+        power_before = row['power_before_steady']
+        power_after = row['power_after_steady']
         
         event = {
             "timestamp": current_time.isoformat(),
             "event_type": event_type,
-            "power_change_watts": round(float(power_change), 1),
+            "power_change_watts": round(float(change), 1),
             "power_before_watts": round(float(power_before), 1),
             "power_after_watts": round(float(power_after), 1),
             "signature": {
@@ -596,6 +627,7 @@ def detect_power_changes(df: pd.DataFrame,
         
         events.append(event)
         last_event_time = current_time
+        last_event_sign = current_sign
     
     return events
 

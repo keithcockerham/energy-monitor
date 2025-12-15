@@ -539,95 +539,114 @@ def detect_power_changes(df: pd.DataFrame,
                          threshold_watts: float = 200.0,
                          min_duration_seconds: int = 5) -> list[dict]:
     """
-    Detect significant power changes using steady-state comparison.
+    Detect significant power changes by finding stable states and transitions.
     
-    Instead of point-to-point diffs, compares average power in windows
-    before and after each point. This catches gradual ramps (like Tesla
-    soft-start) as single events with correct magnitude.
+    1. Identify stable periods (low variance over window)
+    2. Find transitions between stable states
+    3. Report one event per transition with full magnitude
     """
     events = []
     
-    if len(df) < 20:  # Need enough data for windows
+    if len(df) < 30:  # Need enough data
         return events
     
     df = df.sort_values('timestamp_utc').reset_index(drop=True)
     
-    # Window sizes (in samples, ~1 sample/second)
-    window_size = 10  # 10 seconds for steady-state average
-    gap = 3  # Skip 3 samples around the change point to avoid transition noise
-    
-    # Calculate rolling averages for "before" and "after" windows
-    # before_avg[i] = mean of samples [i-window_size-gap : i-gap]
-    # after_avg[i] = mean of samples [i+gap : i+gap+window_size]
-    
     power = df['total_act_power'].values
     n = len(power)
     
-    # Pre-calculate steady-state levels
-    before_avg = np.full(n, np.nan)
-    after_avg = np.full(n, np.nan)
+    # Parameters
+    stable_window = 10  # Seconds to check for stability
+    stability_threshold = 50  # Max std dev to be considered "stable"
+    min_gap_samples = 15  # Minimum samples between events (15 seconds)
     
-    for i in range(window_size + gap, n - window_size - gap):
-        before_avg[i] = np.mean(power[i - window_size - gap : i - gap])
-        after_avg[i] = np.mean(power[i + gap : i + gap + window_size])
+    # Calculate rolling mean and std
+    rolling_mean = np.zeros(n)
+    rolling_std = np.zeros(n)
     
-    # Calculate steady-state change at each point
-    df['power_before_steady'] = before_avg
-    df['power_after_steady'] = after_avg
-    df['steady_state_change'] = after_avg - before_avg
+    for i in range(stable_window, n):
+        window = power[i - stable_window:i]
+        rolling_mean[i] = np.mean(window)
+        rolling_std[i] = np.std(window)
     
-    # Find points where steady-state change exceeds threshold
-    significant = df[abs(df['steady_state_change']) >= threshold_watts].copy()
+    # Fill early values
+    rolling_mean[:stable_window] = rolling_mean[stable_window]
+    rolling_std[:stable_window] = rolling_std[stable_window]
     
-    if len(significant) == 0:
-        return events
+    df['rolling_mean'] = rolling_mean
+    df['rolling_std'] = rolling_std
+    df['is_stable'] = rolling_std < stability_threshold
     
-    # Group nearby detections into single events
-    # (a device turning on might trigger multiple consecutive points)
-    last_event_time = None
-    last_event_sign = None
+    # Find transitions: stable -> unstable -> stable
+    # Walk through and find where stable mean changes significantly
+    i = stable_window
+    last_event_idx = -min_gap_samples  # Allow first event
     
-    for idx, row in significant.iterrows():
-        current_time = row['timestamp_utc']
-        change = row['steady_state_change']
-        current_sign = 1 if change > 0 else -1
+    while i < n - stable_window:
+        # Skip if not stable
+        if not df.loc[i, 'is_stable']:
+            i += 1
+            continue
         
-        # Skip if too close to last event of same sign (debounce)
-        if last_event_time is not None:
-            time_diff = (current_time - last_event_time).total_seconds()
-            if time_diff < min_duration_seconds and current_sign == last_event_sign:
-                continue
+        # Check if too close to last event
+        if i - last_event_idx < min_gap_samples:
+            i += 1
+            continue
         
-        # Determine event type
-        event_type = "device_on" if change > 0 else "device_off"
+        current_stable_power = df.loc[i, 'rolling_mean']
         
-        power_before = row['power_before_steady']
-        power_after = row['power_after_steady']
+        # Look ahead for next stable region with different power level
+        j = i + 1
+        found_transition = False
         
-        event = {
-            "timestamp": current_time.isoformat(),
-            "event_type": event_type,
-            "power_change_watts": round(float(change), 1),
-            "power_before_watts": round(float(power_before), 1),
-            "power_after_watts": round(float(power_after), 1),
-            "signature": {
-                "a_voltage": round(float(row['a_voltage']), 2),
-                "a_current": round(float(row['a_current']), 3),
-                "a_power": round(float(row['a_act_power']), 1),
-                "a_pf": round(float(row['a_pf']), 3),
-                "b_voltage": round(float(row['b_voltage']), 2),
-                "b_current": round(float(row['b_current']), 3),
-                "b_power": round(float(row['b_act_power']), 1),
-                "b_pf": round(float(row['b_pf']), 3),
-                "frequency": round(float(row['a_freq']), 2)
-            },
-            "label": None,
-            "confidence": None
-        }
+        while j < n - stable_window:
+            if df.loc[j, 'is_stable']:
+                next_stable_power = df.loc[j, 'rolling_mean']
+                power_change = next_stable_power - current_stable_power
+                
+                if abs(power_change) >= threshold_watts:
+                    # Found a significant transition
+                    found_transition = True
+                    
+                    # Find the midpoint of the transition for timestamp
+                    mid_idx = (i + j) // 2
+                    row = df.iloc[mid_idx]
+                    
+                    event_type = "device_on" if power_change > 0 else "device_off"
+                    
+                    event = {
+                        "timestamp": row['timestamp_utc'].isoformat(),
+                        "event_type": event_type,
+                        "power_change_watts": round(float(power_change), 1),
+                        "power_before_watts": round(float(current_stable_power), 1),
+                        "power_after_watts": round(float(next_stable_power), 1),
+                        "signature": {
+                            "a_voltage": round(float(row['a_voltage']), 2),
+                            "a_current": round(float(row['a_current']), 3),
+                            "a_power": round(float(row['a_act_power']), 1),
+                            "a_pf": round(float(row['a_pf']), 3),
+                            "b_voltage": round(float(row['b_voltage']), 2),
+                            "b_current": round(float(row['b_current']), 3),
+                            "b_power": round(float(row['b_act_power']), 1),
+                            "b_pf": round(float(row['b_pf']), 3),
+                            "frequency": round(float(row['a_freq']), 2)
+                        },
+                        "label": None,
+                        "confidence": None
+                    }
+                    
+                    events.append(event)
+                    last_event_idx = j
+                    i = j  # Jump to next stable region
+                    break
+                else:
+                    # Stable but same power level, keep looking
+                    i = j
+                    break
+            j += 1
         
-        events.append(event)
-        last_event_time = current_time
-        last_event_sign = current_sign
+        if not found_transition:
+            i += 1
     
     return events
 

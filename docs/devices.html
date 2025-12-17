@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Signatures | NILM Portfolio Project</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .device-section {
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .device-section:nth-child(even) {
+            background: var(--light);
+        }
+
+        .device-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .device-header h2 {
+            margin: 0;
+        }
+
+        .device-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge-240v {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+        }
+
+        .badge-120v {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .device-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .device-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .signature-plot {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .signature-plot img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        .signature-plot .placeholder {
+            background: var(--light);
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 4rem 2rem;
+            text-align: center;
+            color: var(--text-light);
+        }
+
+        .device-specs {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .spec-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .spec-table th,
+        .spec-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .spec-table th {
+            color: var(--text-light);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .spec-table td {
+            font-weight: 500;
+        }
+
+        .spec-value {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .feature-list {
+            margin-top: 1.5rem;
+        }
+
+        .feature-list h4 {
+            color: var(--text-light);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-list ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            color: var(--text-dark);
+        }
+
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-light);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>Energy Disaggregation</h1>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html">Overview</a></li>
+                <li><a href="methodology.html">Methodology</a></li>
+                <li><a href="results.html">Results</a></li>
+                <li><a href="labeling.html">Labeling</a></li>
+                <li><a href="devices.html" class="active">Devices</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h2>Device Signatures</h2>
+                <p class="subtitle">Electrical fingerprints for device identification</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Summary Stats -->
+    <section class="metrics">
+        <div class="container">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">🔌</div>
+                    <div class="metric-value">1</div>
+                    <div class="metric-label">Devices Profiled</div>
+                    <div class="metric-desc">Labeled and verified</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-value">1</div>
+                    <div class="metric-label">240V Devices</div>
+                    <div class="metric-desc">Balanced phase loads</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">💡</div>
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">120V Devices</div>
+                    <div class="metric-desc">Single phase loads</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-value">2</div>
+                    <div class="metric-label">Sample Events</div>
+                    <div class="metric-desc">Training examples</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tesla Charger -->
+    <section class="device-section">
+        <div class="container">
+            <div class="device-header">
+                <h2>🚗 Tesla Charger</h2>
+                <span class="device-badge badge-240v">240V</span>
+            </div>
+            <div class="device-content">
+                <div class="signature-plot">
+                    <!-- Replace with your saved plot -->
+                    <img src="ev_startup.png" alt="Tesla Charger Startup Signature">
+                    <!-- Or use placeholder if no image yet:
+                    <div class="placeholder">
+                        <p>Startup signature plot<br><small>Save plot as signatures/tesla_charger_startup.png</small></p>
+                    </div>
+                    -->
+                </div>
+                <div class="device-specs">
+                    <table class="spec-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Steady State Power</td>
+                            <td class="spec-value">~3000 W</td>
+                        </tr>
+                        <tr>
+                            <td>Power per Phase</td>
+                            <td class="spec-value">~1500 W</td>
+                        </tr>
+                        <tr>
+                            <td>Current per Phase</td>
+                            <td class="spec-value">~12 A</td>
+                        </tr>
+                        <tr>
+                            <td>Power Factor (steady)</td>
+                            <td class="spec-value">~1.0</td>
+                        </tr>
+                        <tr>
+                            <td>Voltage Sag</td>
+                            <td class="spec-value">~0.8 V</td>
+                        </tr>
+                        <tr>
+                            <td>Startup Duration</td>
+                            <td class="spec-value">~15 sec</td>
+                        </tr>
+                    </table>
+                    <div class="feature-list">
+                        <h4>Identifying Features</h4>
+                        <ul>
+                            <li>Stepped power ramp (soft-start)</li>
+                            <li>Phase A ≈ Phase B throughout</li>
+                            <li>PF starts low (~0.78), rises to ~1.0</li>
+                            <li>Characteristic ΔPF dip during ramp</li>
+                            <li>Long duration events (hours)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- HVAC Upstairs - Placeholder -->
+    <section class="device-section">
+        <div class="container">
+            <div class="device-header">
+                <h2>❄️ HVAC Upstairs</h2>
+                <span class="device-badge badge-240v">240V</span>
+            </div>
+            <div class="device-content">
+                <div class="signature-plot">
+                    <div class="placeholder">
+                        <p>Startup signature plot<br><small>Pending device isolation test</small></p>
+                    </div>
+                </div>
+                <div class="device-specs">
+                    <table class="spec-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Steady State Power</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Power per Phase</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Current per Phase</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Power Factor (steady)</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Inrush Current</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                    </table>
+                    <div class="feature-list">
+                        <h4>Expected Features</h4>
+                        <ul>
+                            <li>Inrush current spike on startup</li>
+                            <li>PF ~0.85-0.92 (motor load)</li>
+                            <li>Cycling behavior patterns</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- HVAC Downstairs - Placeholder -->
+    <section class="device-section">
+        <div class="container">
+            <div class="device-header">
+                <h2>❄️ HVAC Downstairs</h2>
+                <span class="device-badge badge-240v">240V</span>
+            </div>
+            <div class="device-content">
+                <div class="signature-plot">
+                    <div class="placeholder">
+                        <p>Startup signature plot<br><small>Pending device isolation test</small></p>
+                    </div>
+                </div>
+                <div class="device-specs">
+                    <table class="spec-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Steady State Power</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Power per Phase</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Current per Phase</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Power Factor (steady)</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Inrush Current</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                    </table>
+                    <div class="feature-list">
+                        <h4>Expected Features</h4>
+                        <ul>
+                            <li>Inrush current spike on startup</li>
+                            <li>PF ~0.85-0.92 (motor load)</li>
+                            <li>May differ from upstairs unit</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pool Pump - Placeholder -->
+    <section class="device-section">
+        <div class="container">
+            <div class="device-header">
+                <h2>🏊 Pool Pump</h2>
+                <span class="device-badge badge-240v">240V</span>
+            </div>
+            <div class="device-content">
+                <div class="signature-plot">
+                    <div class="placeholder">
+                        <p>Startup signature plot<br><small>Pending device isolation test</small></p>
+                    </div>
+                </div>
+                <div class="device-specs">
+                    <table class="spec-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Steady State Power</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Power Factor (steady)</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                        <tr>
+                            <td>Run Schedule</td>
+                            <td class="spec-value">TBD</td>
+                        </tr>
+                    </table>
+                    <div class="feature-list">
+                        <h4>Expected Features</h4>
+                        <ul>
+                            <li>Motor load characteristics</li>
+                            <li>Consistent daily schedule</li>
+                            <li>Variable speed possible</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Add More Devices Section -->
+    <section class="overview">
+        <div class="container">
+            <h2>Adding New Devices</h2>
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <h3>1. Isolate Device</h3>
+                    <p>Turn off all devices except essentials, then run target device for 2-3 minutes.</p>
+                </div>
+                <div class="overview-card">
+                    <h3>2. Capture Event</h3>
+                    <p>Use event_explorer.py to find and extract the event with 10-second buffer.</p>
+                </div>
+                <div class="overview-card">
+                    <h3>3. Generate Plot</h3>
+                    <p>Create delta plots for ΔPower, ΔCurrent, ΔVoltage, ΔPF and save to signatures/ folder.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>Built by Keith | <a href="https://github.com/keithcockerham">GitHub</a> | <a href="https://linkedin.com/in/kcockerham">LinkedIn</a></p>
+            <p>Energy Disaggregation Project | NILM</p>
+        </div>
+    </footer>
+</body>
+</html>

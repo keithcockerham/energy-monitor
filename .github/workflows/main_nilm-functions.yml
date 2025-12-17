@@ -1,9 +1,6 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
 name: Build and deploy Python project to Azure Function App - nilm-functions
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 env:
   AZURE_FUNCTIONAPP_NAME: 'nilm-functions'

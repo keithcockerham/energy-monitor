@@ -4,6 +4,10 @@
 let dashboardData = null;
 const API_BASE = 'https://nilm-functions-e7c9bnc9e3hxbac7.centralus-01.azurewebsites.net/api';
 
+// Default time range
+let currentHours = 6;
+let currentDownsample = 5;
+
 // Chart color scheme matching portfolio style
 const colors = {
     primary: '#667eea',
@@ -46,6 +50,47 @@ function toLocalTime(utcTimestamps) {
     });
 }
 
+// Load data from API with specified time range
+async function loadDashboardData(hours, downsample) {
+    currentHours = hours;
+    currentDownsample = downsample;
+    
+    showLoading();
+    
+    try {
+        const response = await fetch(`${API_BASE}/dashboard?hours=${hours}&downsample=${downsample}`);
+        
+        if (!response.ok) {
+            throw new Error(`API returned ${response.status}: ${response.statusText}`);
+        }
+        
+        dashboardData = await response.json();
+        
+        if (dashboardData.error) {
+            throw new Error(dashboardData.error);
+        }
+        
+        updateMetrics(dashboardData.metrics);
+        createPowerChart(dashboardData.timeseries);
+        createPhaseChart(dashboardData.metrics);
+        createPowerFactorChart(dashboardData.metrics);
+        createEventChart(dashboardData.events);
+        populateEventsTable(dashboardData.events);
+        
+        // Update active button state
+        document.querySelectorAll('.time-range-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (parseInt(btn.dataset.hours) === hours) {
+                btn.classList.add('active');
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error loading data:', error);
+        showError(`Failed to load data: ${error.message}`);
+    }
+}
+
 // Power Consumption Chart
 function createPowerChart(timeseries) {
     const localTimes = toLocalTime(timeseries.timestamps);
@@ -67,16 +112,7 @@ function createPowerChart(timeseries) {
         xaxis: { 
             title: 'Time (Central)',
             type: 'date',
-            rangeslider: { visible: true },
-            rangeselector: {
-                buttons: [
-                    { count: 5, label: '5m', step: 'minute', stepmode: 'backward' },
-                    { count: 30, label: '30m', step: 'minute', stepmode: 'backward' },
-                    { count: 1, label: '1h', step: 'hour', stepmode: 'backward' },
-                    { count: 6, label: '6h', step: 'hour', stepmode: 'backward' },
-                    { step: 'all', label: 'All' }
-                ]
-            }
+            rangeslider: { visible: true }
         },
         yaxis: { title: 'Power (W)', rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.15 },
@@ -272,35 +308,33 @@ function showError(message) {
     });
 }
 
+// Create time range selector controls
+function createTimeRangeControls() {
+    const controlsContainer = document.getElementById('timeRangeControls');
+    if (!controlsContainer) return;
+    
+    const ranges = [
+        { hours: 1, label: '1h', downsample: 1 },
+        { hours: 6, label: '6h', downsample: 5 },
+        { hours: 24, label: '24h', downsample: 10 },
+        { hours: 72, label: '3d', downsample: 30 },
+        { hours: 168, label: '7d', downsample: 60 }
+    ];
+    
+    controlsContainer.innerHTML = ranges.map(r => `
+        <button class="time-range-btn ${r.hours === 6 ? 'active' : ''}" 
+                data-hours="${r.hours}" 
+                data-downsample="${r.downsample}"
+                onclick="loadDashboardData(${r.hours}, ${r.downsample})">
+            ${r.label}
+        </button>
+    `).join('');
+}
+
 // Initialize all charts on page load
 document.addEventListener('DOMContentLoaded', async function() {
-    showLoading();
-    
-    try {
-        // Fetch data from Azure API
-        const response = await fetch(`${API_BASE}/dashboard?hours=6&downsample=5`);
-        
-        if (!response.ok) {
-            throw new Error(`API returned ${response.status}: ${response.statusText}`);
-        }
-        
-        dashboardData = await response.json();
-        
-        if (dashboardData.error) {
-            throw new Error(dashboardData.error);
-        }
-        
-        updateMetrics(dashboardData.metrics);
-        createPowerChart(dashboardData.timeseries);
-        createPhaseChart(dashboardData.metrics);
-        createPowerFactorChart(dashboardData.metrics);
-        createEventChart(dashboardData.events);
-        populateEventsTable(dashboardData.events);
-        
-    } catch (error) {
-        console.error('Error loading data:', error);
-        showError(`Failed to load data: ${error.message}`);
-    }
+    createTimeRangeControls();
+    await loadDashboardData(6, 5);  // Default: 6 hours
 });
 
 // Export for use in Jupyter/external updates
@@ -311,6 +345,7 @@ window.energyDashboard = {
     createPowerFactorChart,
     createEventChart,
     populateEventsTable,
+    loadDashboardData,
     colors,
     API_BASE
 };
